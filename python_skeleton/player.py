@@ -6,11 +6,15 @@ from skeleton.states import GameState, TerminalState, RoundState
 from skeleton.states import NUM_ROUNDS, STARTING_STACK, BIG_BLIND, SMALL_BLIND
 from skeleton.bot import Bot
 from skeleton.runner import parse_args, run_bot
-
 import random
+import joblib
+import numpy as np
+from typing import List
+import copy
+from aiplayer import CFRAIPlayer
 
 
-class Player(Bot):
+class Player(Bot, CFRAIPlayer):
     '''
     A pokerbot.
     '''
@@ -18,14 +22,10 @@ class Player(Bot):
     def __init__(self):
         '''
         Called when a new game starts. Called exactly once.
-
-        Arguments:
-        Nothing.
-
-        Returns:
-        Nothing.
         '''
-        pass
+        super().__init__(STARTING_STACK)
+        self.preflop_infosets = joblib.load("preflop_infoSets_batch_19.joblib")
+        self.postflop_infosets = joblib.load("postflop_infoSets_batch_19.joblib")
 
     def handle_new_round(self, game_state, round_state, active):
         '''
@@ -68,10 +68,7 @@ class Player(Bot):
         my_bounty_hit = terminal_state.bounty_hits[active]  # True if you hit bounty
         opponent_bounty_hit = terminal_state.bounty_hits[1-active] # True if opponent hit bounty
         bounty_rank = previous_state.bounties[active]  # your bounty rank
-
-        # The following is a demonstration of accessing illegal information (will not work)
-        opponent_bounty_rank = previous_state.bounties[1-active]  # attempting to grab opponent's bounty rank
-
+        
         if my_bounty_hit:
             print("I hit my bounty of " + bounty_rank + "!")
         if opponent_bounty_hit:
@@ -119,231 +116,139 @@ class Player(Bot):
         opponent_bounty_hit = terminal_state.bounty_hits[1-active] # True if opponent hit bounty
         bounty_rank = previous_state.bounties[active]  # your bounty rank
 
-        # The following is a demonstration of accessing illegal information (will not work)
-        opponent_bounty_rank = previous_state.bounties[1-active]  # attempting to grab opponent's bounty rank
-
         if my_bounty_hit:
             print("I hit my bounty of " + bounty_rank + "!")
         if opponent_bounty_hit:
             print("Opponent hit their bounty of " + opponent_bounty_rank + "!")
 
 
-    def check_Quads(self, game_state, round_state, active):
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-
-        all_cards = my_cards + board_cards
-        all_cards.sort()
-
-        for i in range(0, len(all_cards)-3):
-            if all_cards[i][0] == all_cards[i+1][0] and all_cards[i+1][0] == all_cards[i+2][0] and all_cards[i+2][0] == all_cards[i+3][0]:
-                print("There's a Quads")
-                return True
-            
-        return False
-    
-    def check_FullHouse(self, game_state, round_state, active):
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-        all_cards = my_cards + board_cards
-        all_cards.sort()
-
-        isTriple = False
-        triple = None
-
-        for i in range(0, len(all_cards)-2):
-            if all_cards[i][0] == all_cards[i+1][0] and all_cards[i+1][0] == all_cards[i+2][0]:
-                print("There's a Triples")
-                isTriple = True
-                triple = all_cards[i][0]
-        
-        if isTriple == False:
-            return False
-
-        for i in range(len(all_cards)):
-            for j in range(i+1, len(all_cards)):
-                if all_cards[i][0] == all_cards[j][0] and all_cards[i][0] != triple:
-                    return True
-
-        return False
-    
-    def check_Straight(self, game_state, round_state, active):
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-        all_cards = my_cards + board_cards
-        
-        if street == 0:
-            return False
-        
-        ranks = '23456789TJQKA'
-        rank_values = {rank: index for index, rank in enumerate(ranks)}
-        card_ranks = sorted([rank_values[card[0]] for card in all_cards])
-
-        straight = False
-        for i in range(len(card_ranks)-4):
-            if card_ranks[i] == card_ranks[i+1]-1 and card_ranks[i+1] == card_ranks[i+2]-1 and card_ranks[i+2] == card_ranks[i+3]-1 and card_ranks[i+3] == card_ranks[i+4]-1:
-                return True
-        
-        return False
-    
-    def check_FourStraight(self, game_state, round_state, active):
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-        all_cards = my_cards + board_cards
-        
-        if street == 0:
-            return False
-        
-        ranks = '23456789TJQKA'
-        rank_values = {rank: index for index, rank in enumerate(ranks)}
-        card_ranks = sorted([rank_values[card[0]] for card in all_cards])
-
-        straight = False
-        for i in range(len(card_ranks)-3):
-            if card_ranks[i] == card_ranks[i+1]-1 and card_ranks[i+1] == card_ranks[i+2]-1 and card_ranks[i+2] == card_ranks[i+3]-1:
-                return True
-        
-        return False
-    
-    def check_ThreeStraight(self, game_state, round_state, active):
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-        all_cards = my_cards + board_cards
-        
-        if street == 0:
-            return False
-        
-        ranks = '23456789TJQKA'
-        rank_values = {rank: index for index, rank in enumerate(ranks)}
-        card_ranks = sorted([rank_values[card[0]] for card in all_cards])
-
-        straight = False
-        for i in range(len(card_ranks)-2):
-            if card_ranks[i] == card_ranks[i+1]-1 and card_ranks[i+1] == card_ranks[i+2]-1:
-                return True
-        
-        return False
-    
-    def check_flush(self,game_state,round_state, active):
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-        all_cards = my_cards + board_cards
-
-        suits = [card[1] for card in all_cards]
-        suit_counts = {}
-
-        for suit in set(suits):
-            count = suits.count(suit)
-            suit_counts[suit] = count
-        
-        if max(suit_counts.values()) == 5:
-            return True
+    def perform_preflop_abstraction(self, history, BIG_BLIND=2):
+        stage = copy.deepcopy(history)
+        abstracted_history = stage[:2]
+        if (
+            len(stage) >= 6 and stage[3] != "c"  # bet seqeuence of length 4
+        ):  # length 6 that isn't a call, we need to condense down
+            if len(stage) % 2 == 0:
+                abstracted_history += ["bMAX"]
+            else:
+                abstracted_history += ["bMIN", "bMAX"]
         else:
-            return False
-        
-    def check_fourSameSuit(self,game_state,round_state, active):
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-        all_cards = my_cards + board_cards
+            bet_size = BIG_BLIND
+            pot_total = BIG_BLIND + int(BIG_BLIND / 2)
+            for i, action in enumerate(stage[2:]):
+                if action[0] == "b":
+                    bet_size = int(action[1:])
 
-        suits = [card[1] for card in all_cards]
-        suit_counts = {}
+                    # this is a raise on a small bet
+                    if abstracted_history[-1] == "bMIN":
+                        if bet_size <= 2 * pot_total:
+                            abstracted_history += ["bMID"]
+                        else:
+                            abstracted_history += ["bMAX"]
+                    elif abstracted_history[-1] == "bMID":
+                        abstracted_history += ["bMAX"]
+                    elif abstracted_history[-1] == "bMAX":
+                        if abstracted_history[-2] == "bMID":
+                            abstracted_history[-2] = "bMIN"
+                        abstracted_history[-1] = "bMID"
+                        abstracted_history += ["bMAX"]
+                    else:  # first bet
+                        if bet_size <= pot_total:
+                            abstracted_history += ["bMIN"]
+                        elif bet_size <= 2 * pot_total:
+                            abstracted_history += ["bMID"]
+                        else:
+                            abstracted_history += ["bMAX"]
 
-        for suit in set(suits):
-            count = suits.count(suit)
-            suit_counts[suit] = count
-        
-        if max(suit_counts.values()) == 4:
-            return True
+                    pot_total += bet_size
+
+                elif action == "c":
+                    pot_total = 2 * bet_size
+                    abstracted_history += ["c"]
+                else:
+                    abstracted_history += [action]
+        return abstracted_history
+
+    def perform_postflop_abstraction(self, history, BIG_BLIND=2):
+        history = copy.deepcopy(history)
+
+        pot_total = BIG_BLIND * 2
+        # Compute preflop pot size
+        flop_start = history.index("/")
+        for i, action in enumerate(history[:flop_start]):
+            if action[0] == "b":
+                bet_size = int(action[1:])
+                pot_total = 2 * bet_size
+
+        # ------- Remove preflop actions + bet abstraction -------
+        abstracted_history = history[:2]
+        # swap dealer and small blind positions for abstraction
+        stage_start = flop_start
+        stage = self.get_stage(history[stage_start + 1 :])
+        latest_bet = 0
+        while True:
+            abstracted_history += ["/"]
+            if (
+                len(stage) >= 4 and stage[3] != "c"
+            ):  # length 4 that isn't a call, we need to condense down
+                abstracted_history += [stage[0]]
+
+                if stage[-1] == "c":
+                    if len(stage) % 2 == 1:  # ended on dealer
+                        abstracted_history += ["bMAX", "c"]
+                    else:
+                        if stage[0] == "k":
+                            abstracted_history += ["k", "bMAX", "c"]
+                        else:
+                            abstracted_history += ["bMIN", "bMAX", "c"]
+                else:
+                    if len(stage) % 2 == 0:
+                        abstracted_history += ["bMAX"]
+                    else:
+                        abstracted_history += ["bMIN", "bMAX"]
+            else:
+                for i, action in enumerate(stage):
+                    if action[0] == "b":
+                        bet_size = int(action[1:])
+                        latest_bet = bet_size
+
+                        # this is a raise on a small bet
+                        if abstracted_history[-1] == "bMIN":
+                            abstracted_history += ["bMAX"]
+                        # this is a raise on a big bet
+                        elif (
+                            abstracted_history[-1] == "bMAX"
+                        ):  # opponent raised, first bet must be bMIN
+                            abstracted_history[-1] = "bMIN"
+                            abstracted_history += ["bMAX"]
+                        else:  # first bet
+                            if bet_size >= pot_total:
+                                abstracted_history += ["bMAX"]
+                            else:
+                                abstracted_history += ["bMIN"]
+
+                        pot_total += bet_size
+
+                    elif action == "c":
+                        pot_total += latest_bet
+                        abstracted_history += ["c"]
+                    else:
+                        abstracted_history += [action]
+
+            # Proceed to next stage or exit if final stage
+            if "/" not in history[stage_start + 1 :]:
+                break
+            stage_start = history[stage_start + 1 :].index("/") + (stage_start + 1)
+            stage = self.get_stage(history[stage_start + 1 :])
+
+        return abstracted_history
+    
+    def get_stage(self, history):
+        if "/" in history:
+            return history[: history.index("/")]
         else:
-            return False
-        
-    def check_triples(self, game_state, round_state, active):
-            street = round_state.street
-            my_cards = round_state.hands[active]
-            board_cards = round_state.deck[:street]
-            current_cards = my_cards + board_cards
-
-            # Create a dictionary to count occurrences of each rank
-            rank_counts = {}
-
-            for card in current_cards:
-                rank = card[0]
-                if rank not in rank_counts:
-                    rank_counts[rank] = 0
-                rank_counts[rank] += 1
-
-            # Check if any rank has a count of exactly 3
-            for count in rank_counts.values():
-                if count == 3:
-                    return True
-
-            return False
-
-    def check_2_pairs(self, game_state, round_state, active):
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-        current_cards = my_cards + board_cards
-
-        # Create a dictionary to count occurrences of each rank
-        rank_counts = {}
-        for card in current_cards:
-            rank = card[0]
-            if rank not in rank_counts:
-                rank_counts[rank] = 0
-            rank_counts[rank] += 1
-
-        # Count the number of pairs
-        num_pairs = 0
-        for count in rank_counts.values():
-            if count == 2:
-                num_pairs += 1
-
-        # Check if there are exactly two pairs
-        return num_pairs == 2
-    
-    def check_suits_equal(self, card1, card2):
-        if card1[1] == card2[1]:
-            return True
-        return False
-
-    def check_ranks_equal(self, card1, card2):
-        if card1[0] == card2[0]:
-            return True
-        return False
-
-    def check_pair(self, game_state, round_state, active): ##returns the rank of pair if there exists a pair, 0 otherwise
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-        cards = my_cards + board_cards
-
-        for card1_index in range(len(cards)-1):
-            for card2_index in range (card1_index + 1, len(cards)):
-                if self.check_ranks_equal(cards[card1_index], cards[card2_index]):
-                    return cards[card1_index][0]
-        return None
-    
-    def check_ThreeSameSuites(self, game_state, round_state, active):
-        street = round_state.street
-        my_cards = round_state.hands[active]
-        board_cards = round_state.deck[:street]
-        cards = my_cards + board_cards
-
-        for i in range(0, len(cards)-2):
-            if cards[i][1] == cards[i+1][1] and cards[i+1][1] == cards[i+2][1]:
-                return True
-        
-        return False
-    
+            return history
+   
     def get_action(self, game_state, round_state, active):
         '''
         Where the magic happens - your code should implement this function.
@@ -380,239 +285,79 @@ class Player(Bot):
         rank2 = card2[0]
         suit2 = card2[1]
 
-        card_type = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "k", "A"]
-
         big_blind = bool(active)  # True if you are the big blind
 
-        if street == 0:
-            if RaiseAction in legal_actions:
-                min_raise, max_raise = round_state.raise_bounds()  # the smallest and largest numbers of chips for a legal bet/raise
-                min_cost = min_raise - my_pip  # the cost of a minimum bet/raise
-                max_cost = max_raise - my_pip  # the cost of a maximum bet/raise
+         # Convert cards to string format
+        card_str = [str(card) for card in my_cards]
+        community_cards = [str(card) for card in board_cards]
 
-                if rank1  == "A" and rank2 == "A":
-                    return RaiseAction(min(max(min_cost, 85), max_cost))
-                if rank1  == "K" and rank2 == "K":
-                    return RaiseAction(min(max(min_cost, 82), max_cost))
-                if rank1  == "Q" and rank2 == "Q":
-                    return RaiseAction(min(max(min_cost, 80), max_cost))
-                if rank1  == "J" and rank2 == "J":
-                    return RaiseAction(min(max(min_cost, 77), max_cost))
-                if rank1  == "T" and rank2 == "T":
-                    return RaiseAction(min(max(min_cost, 75), max_cost))
-                if rank1  == "9" and rank2 == "9":
-                    return RaiseAction(min(max(min_cost, 72), max_cost))
+        # Reconstruct history (this is a simplified version)
+        history = []
+        if street > 0:
+            history = ['d', 'c', '/']  # Assume dealer called preflop
+        if street > 3:
+            history.extend(['c', 'c', '/'])  # Assume both checked on flop
+        if street > 4:
+            history.extend(['c', 'c', '/'])  # Assume both checked on turn
 
-            if CallAction in legal_actions:
-                if rank1 == rank2:
-                    if rank1 == "4" or rank1 == "5" or rank1 == "6" or rank1 == "7" or rank1 == "8": #Pairs 4-8
-                        return CallAction()
-                    else:
-                        if opp_pip <= 75:
-                            return CallAction()
+        isDealer = active == 0
+        checkAllowed = CheckAction in legal_actions
 
-                if rank1 == "A" or rank2 == "A": #Has a A (2-K suited, 6-K unsuited)
-                    if suit1 == suit2:
-                        return CallAction()
-                    else:
-                        for i in range(4, len(card_type)-1):
-                            if rank1 == card_type[i]:
-                                return CallAction()
-                            if rank2 == card_type[i]:
-                                return CallAction()
+        action = self.get_cfr_action(
+            history,
+            card_str,
+            community_cards,
+            opp_pip,
+            my_contribution + opp_pip,
+            my_contribution + opp_contribution,
+            my_stack,
+            BIG_BLIND,
+            isDealer,
+            checkAllowed
+        )
 
-                        if opp_pip <= 75:
-                            return CallAction()
-
-                if rank1 == "K" or rank2 == "K": #Has a K (7-Q suited, 9-Q unsuited)
-                    if suit1 == suit2:
-                        for i in range(5, len(card_type)-2):
-                            if rank1 == card_type[i]:
-                                return CallAction()
-                            if rank2 == card_type[i]:
-                                return CallAction()
-
-                        if opp_pip <= 75:
-                            return CallAction()
-                    else:
-                        for i in range(7, len(card_type)-2):
-                            if rank1 == card_type[i]:
-                                return CallAction()
-                            if rank2 == card_type[i]:
-                                return CallAction()
-
-                        if opp_pip <= 75:
-                            return CallAction()
-
-                if rank1 == "Q" or rank2 == "Q": #Has a Q (9-J suited, 10-J unsuited)
-                    if suit1 == suit2:
-                        for i in range(7, len(card_type)-3):
-                            if rank1 == card_type[i]:
-                                return CallAction()
-                            if rank2 == card_type[i]:
-                                return CallAction()
-
-                        if opp_pip <= 75:
-                            return CallAction()
-                    else:
-                        for i in range(8, len(card_type)-3):
-                            if rank1 == card_type[i]:
-                                return CallAction()
-                            if rank2 == card_type[i]:
-                                return CallAction()
-
-                        if opp_pip <= 75:
-                            return CallAction()
-
-                if rank1 == "J" or rank2 == "J": #Has a J (10 suited)
-                    if suit1 == suit2 and suit1 == "T":
-                        return CallAction()
-                    if opp_pip <= 75:
-                            return CallAction()
-
-                if rank1 == "T" or rank2 == "T": #Has a 10 (7-9 suited, 9 unsuited)
-                    if suit1 == suit2 and opp_pip <= 75:
-                        for i in range(5, 8):
-                            if rank1 == card_type[i]:
-                                return CallAction()
-                            if rank2 == card_type[i]:
-                                return CallAction()
-
-                    if suit1 != suit2 and opp_pip <= 75:
-                        if suit1 == "9":
-                            return CallAction()
-
-                if rank1 == "9" or rank2 == "9": #Has a 9 (8-9 suited)
-                    if suit1 == suit2 and opp_pip <= 75:
-                        for i in range(6, 8):
-                            if rank1 == card_type[i]:
-                                return CallAction()
-                            if rank2 == card_type[i]:
-                                return CallAction()
-
-
-            if CheckAction in legal_actions:
-                return CheckAction()
-
-            if FoldAction in legal_actions:
-                return FoldAction()
-
-
-        if street == 3:
-            if RaiseAction in legal_actions:
-                min_raise, max_raise = round_state.raise_bounds()  # the smallest and largest numbers of chips for a legal bet/raise
-                min_cost = min_raise - my_pip  # the cost of a minimum bet/raise
-                max_cost = max_raise - my_pip  # the cost of a maximum bet/raise
-
-                if self.check_Quads(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 200), max_cost))
-                
-                if self.check_FullHouse(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 175), max_cost))
-                
-                if self.check_flush(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 150), max_cost))
-                
-                if self.check_Straight(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 100), max_cost))
-                
-                if self.check_fourSameSuit(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 75), max_cost))
-                    
-                if self.check_FourStraight(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 50), max_cost))
-                    
-                if self.check_triples(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 50), max_cost))
-
-                if self.check_2_pairs(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 30), max_cost))
-
-                if self.check_pair(game_state, round_state, active) != None and self.check_pair(game_state, round_state, active) in "KA":
-                    return RaiseAction(min(max(min_cost, 30), max_cost))
-            
-            if CallAction in legal_actions:
-                if self.check_pair(game_state, round_state, active) != None and self.check_pair(game_state, round_state, active) in "JQ":
-                    return CallAction()
-
-                if self.check_ThreeSameSuites(game_state, round_state, active):
-                    if opp_pip <= 75:
-                            return CallAction()
-                
-                if self.check_pair(game_state, round_state, active) != None and self.check_pair(game_state, round_state, active) in "789T":
-                    if opp_pip <= 75:
-                            return CallAction()
-                
-                if self.check_ThreeStraight(game_state, round_state, active):
-                    if opp_pip <= 75:
-                            return CallAction()
-            
-            if CheckAction in legal_actions:
-                return CheckAction()
-            
-            if FoldAction in legal_actions:
-                return FoldAction()
-
-        if street == 4:
-            if RaiseAction in legal_actions:
-                min_raise, max_raise = round_state.raise_bounds()  # the smallest and largest numbers of chips for a legal bet/raise
-                min_cost = min_raise - my_pip  # the cost of a minimum bet/raise
-                max_cost = max_raise - my_pip  # the cost of a maximum bet/raise
-                if self.check_Quads(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 150), max_cost))
-                if self.check_FullHouse(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 100), max_cost))
-                if self.check_flush(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 80), max_cost))
-                if self.check_Straight(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 70), max_cost))
-                if self.check_fourSameSuit(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 30), max_cost))
-                if self.check_triples(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 30), max_cost))
-                if self.check_2_pairs(game_state, round_state, active):
-                    return RaiseAction(min_raise)
-            
-            if CallAction in legal_actions:
-                if self.check_FourStraight(game_state, round_state, active) or (self.check_pair(game_state, round_state, active) != None and self.check_pair(game_state, round_state, active) in "KA"):
-                    return CallAction()
-                elif self.check_pair(game_state, round_state, active) != None and self.check_pair(game_state, round_state, active) in "TJQ":
-                    return CallAction()
-                
-            if CheckAction in legal_actions:
-                return CheckAction()
-            
-            if FoldAction in legal_actions:
-                return FoldAction()
+        # Convert CFR action to engine action
+        if action.startswith('b'):
+            return RaiseAction(int(action[1:]))
+        elif action == 'c':
+            return CallAction()
+        elif action == 'f':
+            return FoldAction()
+        else:  # action == 'k'
+            return CheckAction()
         
-        if street == 5:
-            if RaiseAction in legal_actions:
-                min_raise, max_raise = round_state.raise_bounds()  # the smallest and largest numbers of chips for a legal bet/raise
-                min_cost = min_raise - my_pip  # the cost of a minimum bet/raise
-                max_cost = max_raise - my_pip  # the cost of a maximum bet/raise
+    def get_cfr_action(self, history, card_str, community_cards, highest_current_bet, stage_pot_balance, total_pot_balance, player_balance, BIG_BLIND, isDealer, checkAllowed):
+        action = None
+        SMALLEST_BET = int(BIG_BLIND / 2)
 
+        if len(community_cards) == 0:  # preflop
+            abstracted_history = self.perform_preflop_abstraction(history, BIG_BLIND=BIG_BLIND)
+            infoset_key = "".join(PreflopHoldemHistory(abstracted_history).get_infoSet_key())
+            strategy = self.preflop_infosets[infoset_key].get_average_strategy()
+            abstracted_action = get_action(strategy)
 
-                if self.check_Quads(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 150), max_cost))
-                elif self.check_FullHouse(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 100), max_cost))
-                elif self.check_flush(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 80), max_cost))
-                elif self.check_Straight(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 50), max_cost))
-                elif self.check_triples(game_state, round_state, active):
-                    return RaiseAction(min(max(min_cost, 40), max_cost))
+            if abstracted_action == "bMIN":
+                action = "b" + str(max(BIG_BLIND, int(stage_pot_balance)))
+            elif abstracted_action == "bMID":
+                action = "b" + str(max(BIG_BLIND, 2 * int(stage_pot_balance)))
+            elif abstracted_action == "bMAX":
+                action = "b" + str(player_balance)
+            else:
+                action = abstracted_action
+        else:
+            abstracted_history = self.perform_postflop_abstraction(history, BIG_BLIND=BIG_BLIND)
+            infoset_key = PostflopHoldemHistory(abstracted_history).get_infoSet_key_online()
+            strategy = self.postflop_infosets[infoset_key].get_average_strategy()
+            abstracted_action = get_action(strategy)
 
+            if abstracted_action == "bMIN":
+                action = "b" + str(max(BIG_BLIND, int(1 / 3 * total_pot_balance / SMALLEST_BET) * SMALLEST_BET))
+            elif abstracted_action == "bMAX":
+                action = "b" + str(min(total_pot_balance, player_balance))
+            else:
+                action = abstracted_action
 
-            if CallAction in legal_actions:
-                if self.check_pair(game_state, round_state, active) == 'K' or self.check_pair(game_state, round_state, active) == 'A':
-                    return CallAction()
-
-            if CheckAction in legal_actions:
-                return CheckAction()
-            
-            if FoldAction in legal_actions:
-                return FoldAction()
+        return action
 
 if __name__ == '__main__':
     run_bot(Player(), parse_args())
