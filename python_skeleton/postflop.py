@@ -112,3 +112,95 @@ class PostflopHoldemHistory():
 
         print("my hand with community cards: ", hand + community_cards)
         return "".join(infoset)
+
+def predict_cluster_kmeans(kmeans_classifier, cards, n=200):
+    """cards is a list of cards"""
+    assert type(cards) == list
+    equity_distribution = calculate_equity_distribution(cards[:2], cards[2:], n=n)
+    y = kmeans_classifier.predict([equity_distribution])
+    assert len(y) == 1
+    return y[0]
+
+def predict_cluster(cards):
+    assert type(cards) == list
+
+    if USE_KMEANS:
+        if len(cards) == 5:  # flop
+            return predict_cluster_kmeans(kmeans_flop, cards)
+        elif len(cards) == 6:  # turn
+            return predict_cluster_kmeans(kmeans_turn, cards)
+        elif len(cards) == 7:  # river
+            return predict_cluster_fast(cards, total_clusters=NUM_RIVER_CLUSTERS)
+        else:
+            raise ValueError("Invalid number of cards: ", len(cards))
+    else:
+        if len(cards) == 5:  # flop
+            return predict_cluster_fast(cards, total_clusters=NUM_FLOP_CLUSTERS)
+        elif len(cards) == 6:  # turn
+            return predict_cluster_fast(cards, total_clusters=NUM_TURN_CLUSTERS)
+        elif len(cards) == 7:  # river
+            return predict_cluster_fast(cards, total_clusters=NUM_RIVER_CLUSTERS)
+        else:
+            raise ValueError("Invalid number of cards: ", len(cards))
+
+def calculate_equity_distribution(
+    player_cards: List[str], community_cards=[], bins=NUM_BINS, n=200, timer=False, parallel=False
+):
+    """
+    Return
+            equity_hist - Histogram as a list of "bins" elements
+
+    n = # of cards to sample from the next round to generate this distribution.
+
+    There is a tradeoff between the execution speed and variance of the values calculated, since
+    we are using a monte-carlo method to calculate those equites. In the end, I found a bin=5, n=100
+    and rollouts using 100 values to be a good approximation. We won't be using this method for
+    pre-flop, since we can have a lossless abstraction of that method anyways.
+
+    The equity distribution is a better way to represent the strength of a given hand. It represents
+    how well a given hand performs over various profiles of community cards. We can calculate
+    the equity distribution of a hand at the following game stages: flop (we are given no community cards), turn (given 3 community cards) and river (given 4 community cards).
+
+    if we want to generate a distribution for the EHS of the turn (so we are given our private cards + 3 community cards),
+    we draw various turn cards, and calculate the equity using those turn cards.
+    If we find for a given turn card that its equity is 0.645, and we have 10 bins, we would increment the bin 0.60-0.70 by one.
+    We repeat this process until we get enough turn card samples.
+    """
+    if timer:
+        start_time = time.time()
+    equity_hist = [
+        0 for _ in range(bins)
+    ]  # histogram of equities, where equity[i] represents the probability of the i-th bin
+
+    assert len(community_cards) != 1 and len(community_cards) != 2
+
+    deck = fast_evaluator.Deck(excluded_cards=player_cards + community_cards)
+
+    def sample_equity():
+        random.shuffle(deck)
+        if len(community_cards) == 0:
+            score = calculate_equity(player_cards, community_cards + deck[:3], n=200)
+        elif len(community_cards) < 5:
+            score = calculate_equity(player_cards, community_cards + deck[:1], n=100)
+        else:
+            score = calculate_equity(player_cards, community_cards, n=100)
+
+        # equity_hist[min(int(score * bins), bins-1)] += 1.0 # Score of the closest bucket is incremented by 1
+        return min(int(score * bins), bins - 1)
+
+    if parallel:  # Computing these equity distributions in parallel is much faster
+        equity_bin_list = Parallel(n_jobs=-1)(delayed(sample_equity)() for _ in range(n))
+
+    else:
+        equity_bin_list = [sample_equity() for _ in range(n)]
+
+    for bin_i in equity_bin_list:
+        equity_hist[bin_i] += 1.0
+
+    # Normalize the equity so that the probability mass function (p.m.f.) of the distribution sums to 1
+    for i in range(bins):
+        equity_hist[i] /= n
+
+    if timer:
+        print("Time to calculate equity distribution: ", time.time() - start_time)
+    return equity_hist
