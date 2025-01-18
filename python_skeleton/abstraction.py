@@ -2,6 +2,7 @@ from typing import List
 import random
 import glob
 import os
+from deuces import Evaluator, Card
 from joblib import Parallel, delayed, load
 
 # Constants
@@ -10,6 +11,8 @@ NUM_TURN_CLUSTERS = 10
 NUM_RIVER_CLUSTERS = 10
 NUM_BINS = 10
 
+evaluator = Evaluator()
+
 # Utility Functions
 def get_all_filenames(path, extension=""):
     """Retrieve filenames with a specific extension from a directory."""
@@ -17,6 +20,26 @@ def get_all_filenames(path, extension=""):
         os.path.basename(file_path)
         for file_path in glob.glob(os.path.join(path, "*" + extension))
     ]
+
+def deuces_evaluate_cards(player_cards, community_cards, remaining_board):
+    """
+    Evaluate the strength of a poker hand using Deuces.
+
+    Args:
+        player_cards (list): List of player's hole cards (e.g., ["Ah", "Kd"]).
+        community_cards (list): List of community cards on the board.
+        remaining_board (list): Remaining cards to complete the board.
+
+    Returns:
+        int: Hand strength score (lower is better).
+    """
+    # Convert cards to Deuces' internal integer format
+    deuces_player_cards = [Card.new(card) for card in player_cards]
+    deuces_community_cards = [Card.new(card) for card in community_cards + remaining_board]
+
+    # Evaluate the hand
+    score = evaluator.evaluate(deuces_community_cards, deuces_player_cards)
+    return score
 
 def initialize_kmeans():
     """Load KMeans classifiers for flop and turn clustering."""
@@ -75,8 +98,10 @@ def compute_equity(player_cards, community_cards=[], iterations=2000):
         random.shuffle(deck)
         opponent_hand = deck[:2]
         remaining_board = deck[2:2 + (5 - len(community_cards))]
-        player_score = evaluate_cards(*(player_cards + community_cards + remaining_board))
-        opponent_score = evaluate_cards(*(opponent_hand + community_cards + remaining_board))
+        player_score = deuces_evaluate_cards(player_cards, community_cards, remaining_board)
+        # Opponent's hand score
+        opponent_score = deuces_evaluate_cards(opponent_hand, community_cards, remaining_board)
+
         wins += (player_score <= opponent_score)
 
     return wins / iterations
