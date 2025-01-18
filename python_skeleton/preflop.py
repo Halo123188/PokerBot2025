@@ -61,7 +61,6 @@ class PreflopHistory():
         infoset = []
         cluster_id = str(get_preflop_cluster_id(self.history[self.player()]))
 
-        # ------- CARD ABSTRACTION -------
         infoset.append(cluster_id)
 
         for action in self.history:
