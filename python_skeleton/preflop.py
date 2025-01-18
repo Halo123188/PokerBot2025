@@ -1,7 +1,7 @@
 import abstraction
 from typing import List
 from abstraction import (
-    get_preflop_cluster_id,
+    classify_preflop_hand,
 )
 from typing import NewType, List
 
@@ -59,7 +59,7 @@ class PreflopHistory():
             raise Exception
 
         infoset = []
-        cluster_id = str(get_preflop_cluster_id(self.history[self.player()]))
+        cluster_id = str(classify_preflop_hand(self.history[self.player()]))
 
         infoset.append(cluster_id)
 

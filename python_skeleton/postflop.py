@@ -1,6 +1,6 @@
 from typing import NewType, List
 import abstraction
-from abstraction import predict_cluster
+from abstraction import fast_cluster_prediction
 
 VALID_ACTIONS = ["k", "bMIN", "bMAX", "c", "f"]
 
@@ -70,7 +70,7 @@ class PostflopHistory:
 
                 if stage_index in {1, 2, 3}:
                     assert len(action) in {6, 2}, "Unexpected action length."
-                    infoset.append(str(predict_cluster(player_hand + community_cards)))
+                    infoset.append(str(fast_cluster_prediction(player_hand + community_cards)))
             else:
                 infoset.append(action)
 
