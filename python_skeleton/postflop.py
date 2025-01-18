@@ -1,6 +1,6 @@
 from typing import NewType, List
-from abstraction import predict_cluster
 import abstraction
+from abstraction import predict_cluster
 
 DISCRETE_ACTIONS = ["k", "bMIN", "bMAX", "c", "f"]
 
