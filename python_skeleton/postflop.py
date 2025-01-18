@@ -1,40 +1,12 @@
 from typing import NewType, List
-from abstraction import predict_cluster
 import abstraction
+from abstraction import predict_cluster
 
 DISCRETE_ACTIONS = ["k", "bMIN", "bMAX", "c", "f"]
 
 Action = NewType("Action", str)
 
-class PostflopHoldemHistory():
-    """
-    Example of history:
-    First two actions are the cards dealt to the players. The rest of the actions are the actions taken by the players.
-            1. ['AkTh', 'QdKd', '/', 'QhJdKs', 'bMIN', 'c', '/', 'Ah', 'k', 'k', ...]
-
-    Notice that there are no bets on the preflop, as this is the postflop version of the game.
-
-    Infoset:
-    [4, 'bMIN', 'c', '10', 'k', 'k', ...]
-
-
-    Every round starts the same way:
-    Small blind = 1 chip
-    Big blind = 2 chips
-
-    Total chips = 100BB per player.
-    Minimum raise = X to match bet, and Y is the raise amount
-    If no raise before, then the minimum raise amount is 2x the bet amount (preflop would be 2x big blind).
-    Else it is whatever was previously raised. This is not the same as 2x the previous bet amount. Just the Y raise amount.
-
-    Ex: The bet is 10$. I raise to 50$, so I raised by 40$ (Y = 40). The next player's minimum raise is not 100$, but rather to 90$, since (it's 50$ to match the bet, and 40$ to match the raise).
-
-    Minimum bet = 1 chip (0.5BB)
-
-    The API for the history is inspired from the Slumbot API, https://www.slumbot.com/
-
-    I want to avoid all the extra overhead, so taking inspiration from `environment.py` with the `PokerEnvironment`
-    """
+class PostflopHistory():
 
     def __init__(self, history: List[Action] = [], sample_id=0):
         self.history = history
