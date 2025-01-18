@@ -1,25 +1,26 @@
 from typing import List
-import fast_evaluator
-from phevaluator import evaluate_cards
 import random
-import matplotlib.pyplot as plt
 import time
-import numpy as np
-import os
-from utils import get_filenames
 import joblib
 from joblib import Parallel, delayed
-from tqdm import tqdm
-from fast_evaluator import phEvaluatorSetup
-import argparse
-from sklearn.cluster import KMeans
+import os
+import glob
 
-USE_KMEANS = True  # use kmeans if you want to cluster by equity distribution (more refined, but less accurate)
 NUM_FLOP_CLUSTERS = 10
 NUM_TURN_CLUSTERS = 10
 NUM_RIVER_CLUSTERS = 10
 
 NUM_BINS = 10
+
+def get_filenames(folder, extension=""):
+    filenames = []
+
+    for path in glob.glob(os.path.join(folder, "*" + extension)):
+        # Extract the filename
+        filename = os.path.split(path)[-1]
+        filenames.append(filename)
+
+    return filenames
 
 def load_kmeans_classifiers():
     global kmeans_flop, kmeans_turn
@@ -128,24 +129,25 @@ def predict_cluster_kmeans(kmeans_classifier, cards, n=200):
 def predict_cluster(cards):
     assert type(cards) == list
 
-    if USE_KMEANS:
-        if len(cards) == 5:  # flop
-            return predict_cluster_kmeans(kmeans_flop, cards)
-        elif len(cards) == 6:  # turn
-            return predict_cluster_kmeans(kmeans_turn, cards)
-        elif len(cards) == 7:  # river
-            return predict_cluster_fast(cards, total_clusters=NUM_RIVER_CLUSTERS)
-        else:
-            raise ValueError("Invalid number of cards: ", len(cards))
+    if len(cards) == 5:  # flop
+        return predict_cluster_fast(cards, total_clusters=NUM_FLOP_CLUSTERS)
+    elif len(cards) == 6:  # turn
+        return predict_cluster_fast(cards, total_clusters=NUM_TURN_CLUSTERS)
+    elif len(cards) == 7:  # river
+        return predict_cluster_fast(cards, total_clusters=NUM_RIVER_CLUSTERS)
     else:
-        if len(cards) == 5:  # flop
-            return predict_cluster_fast(cards, total_clusters=NUM_FLOP_CLUSTERS)
-        elif len(cards) == 6:  # turn
-            return predict_cluster_fast(cards, total_clusters=NUM_TURN_CLUSTERS)
-        elif len(cards) == 7:  # river
-            return predict_cluster_fast(cards, total_clusters=NUM_RIVER_CLUSTERS)
-        else:
-            raise ValueError("Invalid number of cards: ", len(cards))
+        raise ValueError("Invalid number of cards: ", len(cards))
+
+def Deck(excluded_cards=[]):
+    # Returns a shuffled deck
+    deck = []
+    for rank in ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"]:
+        for suit in ["h", "d", "s", "c"]:
+            if rank + suit not in excluded_cards:
+                deck.append(rank + suit)
+
+    random.shuffle(deck)
+    return deck
 
 def calculate_equity_distribution(
     player_cards: List[str], community_cards=[], bins=NUM_BINS, n=200, timer=False, parallel=False
@@ -178,7 +180,7 @@ def calculate_equity_distribution(
 
     assert len(community_cards) != 1 and len(community_cards) != 2
 
-    deck = fast_evaluator.Deck(excluded_cards=player_cards + community_cards)
+    deck = Deck(excluded_cards=player_cards + community_cards)
 
     def sample_equity():
         random.shuffle(deck)
