@@ -2,85 +2,77 @@ from typing import NewType, List
 import abstraction
 from abstraction import predict_cluster
 
-DISCRETE_ACTIONS = ["k", "bMIN", "bMAX", "c", "f"]
+VALID_ACTIONS = ["k", "bMIN", "bMAX", "c", "f"]
 
-Action = NewType("Action", str)
+GameAction = NewType("GameAction", str)
 
-class PostflopHistory():
-
-    def __init__(self, history: List[Action] = [], sample_id=0):
-        self.history = history
+class PostflopHistory:
+    def __init__(self, actions: List[GameAction] = [], sample_id: int = 0):
+        self.actions = actions
         self.sample_id = sample_id
-        self.stage_i = history.count("/")
+        self.current_stage = actions.count("/")
 
-    def player(self):
+    def current_player(self) -> int:
         """
-        # non dealer, dealer
-        1. ['AkTh', 'QdKd', '/', 'Qh', 'b2', 'c', '/', '2d', b2', 'f']
+        Determine the current player: -1 indicates no player (chance stage).
         """
-        if len(self.history) <= 3:
+        if len(self.actions) <= 3 or self._stage_has_ended() or self.actions[-1] == "/":
             return -1
-        elif self._game_stage_ended():
-            return -1
-        elif self.history[-1] == "/":
-            return -1
-        else:
-            last_game_stage = self.get_last_game_stage()
-            # latest game stage
-            return (len(last_game_stage) + 1) % 2
+        last_stage = self._get_last_stage()
+        return (len(last_stage) + 1) % 2
 
-    def _game_stage_ended(self):
-        last_action = self.history[-1]
-        opp_action = self.history[-2]
+    def _stage_has_ended(self) -> bool:
+        """Check if the current betting stage has ended."""
+        last_action = self.actions[-1]
+        second_last_action = self.actions[-2] if len(self.actions) > 1 else None
 
-        if last_action == "f":
-            return True
-        elif last_action == "c":
-            return True
-        elif opp_action == "k" and last_action == "k":
-            return True
-        else:
-            return False
+        return (
+            last_action == "f" or
+            last_action == "c" or
+            (second_last_action == "k" and last_action == "k")
+        )
 
-    def get_last_game_stage(self):
-        last_game_stage_start_idx = max(loc for loc, val in enumerate(self.history) if val == "/")
-        last_game_stage = self.history[last_game_stage_start_idx + 1 :]
-        return last_game_stage
+    def _get_last_stage(self) -> List[GameAction]:
+        """Retrieve the list of actions in the most recent game stage."""
+        last_stage_start = max(idx for idx, action in enumerate(self.actions) if action == "/")
+        return self.actions[last_stage_start + 1 :]
 
-    def is_chance(self):
-        return self.player() == -1
+    def is_chance_stage(self) -> bool:
+        """Check if the current stage is a chance stage."""
+        return self.current_player() == -1
 
-    def get_infoSet_key_online(self) -> List[Action]:
-        history = self.history
-        player = self.player()
+    def get_infoset_key(self) -> str:
+        """Generate the information set key for the current game state."""
+        actions = self.actions
+        player = self.current_player()
         infoset = []
-        # ------- CARD ABSTRACTION -------
-        # Assign cluster ID for FLOP/TURN/RIVER
-        stage_i = 0
-        hand = []
+
+        # --- Card Abstraction ---
+        stage_index = 0
+        player_hand = []
+
+        # Determine player's hand
         if player == 0:
-            hand = [history[0][:2], history[0][2:4]]
+            player_hand = [actions[0][:2], actions[0][2:4]]
         else:
-            hand = [history[1][:2], history[1][2:4]]
+            player_hand = [actions[1][:2], actions[1][2:4]]
+
         community_cards = []
-        for i, action in enumerate(history):
-            if action not in DISCRETE_ACTIONS:
+
+        for action in actions:
+            if action not in VALID_ACTIONS:
                 if action == "/":
-                    stage_i += 1
+                    stage_index += 1
                     continue
-                if stage_i != 0:
-                    community_cards += [history[i][j : j + 2] for j in range(0, len(action), 2)]
-                if stage_i == 1:
-                    assert len(action) == 6
-                    infoset.append(str(predict_cluster(hand + community_cards)))
-                elif stage_i == 2:
-                    assert len(action) == 2
-                    infoset.append(str(predict_cluster(hand + community_cards)))
-                elif stage_i == 3:
-                    assert len(action) == 2
-                    infoset.append(str(predict_cluster(hand + community_cards)))
+
+                if stage_index != 0:
+                    community_cards += [action[i : i + 2] for i in range(0, len(action), 2)]
+
+                if stage_index in {1, 2, 3}:
+                    assert len(action) in {6, 2}, "Unexpected action length."
+                    infoset.append(str(predict_cluster(player_hand + community_cards)))
             else:
                 infoset.append(action)
 
-        print("my hand with community cards: ", hand + community_cards)
+        print("Hand with community cards:", player_hand + community_cards)
         return "".join(infoset)
