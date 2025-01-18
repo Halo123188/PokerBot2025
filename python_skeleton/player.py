@@ -293,12 +293,39 @@ class Player(Bot, CFRAIPlayer):
 
         # Reconstruct history (this is a simplified version)
         history = []
-        if street > 0:
-            history = ['d', 'c', '/']  # Assume dealer called preflop
-        if street > 3:
-            history.extend(['c', 'c', '/'])  # Assume both checked on flop
-        if street > 4:
-            history.extend(['c', 'c', '/'])  # Assume both checked on turn
+        if street == 0:  # Preflop
+            history = ['d']  # Start with dealer
+            if my_pip == SMALL_BLIND:
+                history.append('s')  # Small blind posted
+            elif my_pip == BIG_BLIND:
+                history.extend(['s', 'b'])  # Small blind and big blind posted
+        elif street > 0:
+            history = ['d', 's', 'b', '/']  # Dealer, small blind, big blind, and street separator
+            
+            # Add actions for each street
+            for s in range(3, street + 1):
+                actions_this_street = []
+                for i in range(len(round_state.previous_state.bets[s])):
+                    bet = round_state.previous_state.bets[s][i]
+                    if bet == 0:
+                        actions_this_street.append('k')  # Check
+                    elif bet > 0:
+                        actions_this_street.append(f'b{bet}')  # Bet or raise
+                if len(actions_this_street) % 2 == 1:
+                    actions_this_street.append('c')  # Call to close the street
+                history.extend(actions_this_street)
+                if s < street:
+                    history.append('/')  # Add street separator if not the current street
+
+        # Add actions for the current street
+        current_street_actions = []
+        for i in range(len(round_state.bets)):
+            bet = round_state.bets[i]
+            if bet == 0:
+                current_street_actions.append('k')  # Check
+            elif bet > 0:
+                current_street_actions.append(f'b{bet}')  # Bet or raise
+        history.extend(current_street_actions)
 
         isDealer = active == 0
         checkAllowed = CheckAction in legal_actions
