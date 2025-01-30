@@ -1,130 +1,204 @@
-from typing import List
-import random
-import glob
-import os
-from deuces import Evaluator, Card
-from joblib import Parallel, delayed, load
+from deuces import Deck, Card, Evaluator
+import time
 
-# Constants
+#modify to whatever amt u want
 NUM_FLOP_CLUSTERS = 10
 NUM_TURN_CLUSTERS = 10
 NUM_RIVER_CLUSTERS = 10
-NUM_BINS = 10
+DECK = Deck.GetFullDeck()
+for card in DECK:
+    DECK[DECK.index(card)] = Card.int_to_str(card)
 
-evaluator = Evaluator()
 
-# Utility Functions
-def get_all_filenames(path, extension=""):
-    """Retrieve filenames with a specific extension from a directory."""
-    return [
-        os.path.basename(file_path)
-        for file_path in glob.glob(os.path.join(path, "*" + extension))
-    ]
+def evaluate_winner(board, player_hand, opponent_hand):
+    p1_score = Evaluator.evaluate(board, player_hand)
+    p2_score = Evaluator.evaluate(board, opponent_hand)
+    if p1_score < p2_score:
+        return 1
+    elif p1_score > p2_score:
+        return -1
+    else:
+        return 0
 
-def deuces_evaluate_cards(player_cards, community_cards, remaining_board):
-    """
-    Evaluate the strength of a poker hand using Deuces.
+def get_preflop_card_id(card_history):
+    bounty_id = card_history[0]
+    cards = card_history[1:]
 
-    Args:
-        player_cards (list): List of player's hole cards (e.g., ["Ah", "Kd"]).
-        community_cards (list): List of community cards on the board.
-        remaining_board (list): Remaining cards to complete the board.
+    card1_rank = cards[0]
+    card2_rank = cards[2]
+    card1_suit = cards[1]
+    card2_suit = cards[3]
 
-    Returns:
-        int: Hand strength score (lower is better).
-    """
-    # Convert cards to Deuces' internal integer format
-    deuces_player_cards = [Card.new(card) for card in player_cards]
-    deuces_community_cards = [Card.new(card) for card in community_cards + remaining_board]
+    id = card1_rank + card2_rank
+    cluster_id = None
 
-    # Evaluate the hand
-    score = evaluator.evaluate(deuces_community_cards, deuces_player_cards)
-    return score
+    if card1_rank == card2_rank:
+      cluster_id = Adict[id]
+    elif card1_suit == card2_suit:
+      cluster_id = suitDict[id]
+    else:
+      cluster_id = unsuitDict[id]
 
-def initialize_kmeans():
-    """Load KMeans classifiers for flop and turn clustering."""
-    flop_files = get_all_filenames("../kmeans_data/kmeans/flop")
-    turn_files = get_all_filenames("../kmeans_data/kmeans/turn")
+    return str(bounty_id) + '/' + str(cluster_id)
 
-    flop_classifier = load(f"../kmeans_data/kmeans/flop/{sorted(flop_files)[-1]}")
-    turn_classifier = load(f"../kmeans_data/kmeans/turn/{sorted(turn_files)[-1]}")
+# Abstraction based on Jenny's clusters
+def get_preflop_action_id(actions, player):
+    action_id = ""
+    small_blind_bet = 0
+    big_blind_bet = 0
+    pot = 3
 
-    if len(flop_classifier.cluster_centers_) != NUM_FLOP_CLUSTERS:
-        raise ValueError("Unexpected number of flop clusters.")
-    if len(turn_classifier.cluster_centers_) != NUM_TURN_CLUSTERS:
-        raise ValueError("Unexpected number of turn clusters.")
+    prebet = ""
+    abstracted_bet = ""
+    postbet = ""
+    small_blind_abstracted = ""
+    big_blind_abstracted = ""
 
-    return flop_classifier, turn_classifier
+    start_bet = False
+    for i in range(len(actions)):
+      action = actions[i]
+      if start_bet == False and (action == "c" or action == "f" or action == "k"):
+        prebet += action
+      if start_bet == True and (action == "c" or action == "f" or action == "k"):
+        postbet += action
+      if action[0] == "b":
+        start_bet = True
+        if i % 2 == 0:
+          small_blind_bet += int(action[1:])
+        else:
+          big_blind_bet += int(action[1:])
 
-# Card Clustering and Abstraction
-def classify_preflop_hand(cards):
-    """Classify preflop hands into 169 clusters."""
-    # Ensure cards are in string format
-    if isinstance(cards, list):
-        cards = "".join(cards)
+    if small_blind_bet == 0:
+      pass
+    elif small_blind_bet <= pot:
+      small_blind_abstracted = "bmin"
+    elif small_blind_bet <= 2 * pot:
+      small_blind_abstracted = "bmid"
+    else:
+      small_blind_abstracted = "bmax"
 
-    RANKS = {"A": 1, "K": 13, "Q": 12, "J": 11, "T": 10, **{str(i): i for i in range(2, 10)}}
+    if big_blind_bet == 0:
+      pass
+    elif big_blind_bet <= pot:
+      big_blind_abstracted = "bmin"
+    elif big_blind_bet <= 2 * pot:
+      big_blind_abstracted = "bmid"
+    else:
+      big_blind_abstracted = "bmax"
 
-    def pair_hash(rank1, rank2):
-        """Compute a unique hash for unsuited card pairs."""
-        low, high = sorted((RANKS[rank1], RANKS[rank2]))
-        return (low - 1) * (13 - low // 2) + high - low
+    if player == 0:
+      abstracted_bet = small_blind_abstracted + big_blind_abstracted
+    else:
+      abstracted_bet = big_blind_abstracted + small_blind_abstracted
 
-    rank1, suit1 = cards[0], cards[1]
-    rank2, suit2 = cards[2], cards[3]
+    action_id = prebet + abstracted_bet + postbet
 
-    if rank1 == rank2:
-        return RANKS[rank1]
-    if suit1 == suit2:
-        return 91 + pair_hash(rank1, rank2)
-    return 13 + pair_hash(rank1, rank2)
+    return action_id
 
-# Deck Generation
-def create_shuffled_deck(excluded=[]):
-    """Generate a shuffled deck, excluding specific cards."""
-    suits = "hdsc"
-    ranks = "A23456789TJQK"
-    deck = [rank + suit for rank in ranks for suit in suits if rank + suit not in excluded]
-    random.shuffle(deck)
-    return deck
-
-# Equity Calculation
-def compute_equity(player_cards, community_cards=[], iterations=2000):
-    """Simulate the equity of a hand using Monte Carlo."""
+# calculates equity using Monte Carlo sampling
+def calculate_equity(player_cards, community_cards=[], n=1000, timer=False):
+    if timer:
+        start_time = time.time()
     wins = 0
-    deck = create_shuffled_deck(player_cards + community_cards)
+    evaluator = Evaluator()
 
-    for _ in range(iterations):
+    deck = Deck.GetFullDeck()
+    player_cards = [Card.new(c) if isinstance(c, str) else c for c in player_cards]
+    community_cards = [Card.new(c) if isinstance(c, str) else c for c in community_cards]
+
+    excluded_cards = player_cards + community_cards
+    for card in excluded_cards:
+      deck.remove(card)
+
+    for _ in range(n):
         random.shuffle(deck)
-        opponent_hand = deck[:2]
-        remaining_board = deck[2:2 + (5 - len(community_cards))]
-        player_score = deuces_evaluate_cards(player_cards, community_cards, remaining_board)
-        # Opponent's hand score
-        opponent_score = deuces_evaluate_cards(opponent_hand, community_cards, remaining_board)
+        opponent_cards = deck[:2]  # To avoid creating redundant copies
+        community_cards_extended = community_cards.copy()
+        if len(community_cards_extended) != 5:
+            community_cards_extended.extend(deck[3 : 3 + (5 - len(community_cards))])
 
-        wins += (player_score <= opponent_score)
+        opponent_cards = [Card.new(c) if isinstance(c, str) else c for c in opponent_cards]
 
-    return wins / iterations
 
-def equity_distribution(player_cards, community_cards=[], bins=10, samples=200, parallel=False):
-    """Generate an equity histogram for a hand."""
-    deck = create_shuffled_deck(player_cards + community_cards)
-    histogram = [0] * bins
+        player_score = evaluator.evaluate(
+            community_cards_extended, player_cards
+        )
+        opponent_score = evaluator.evaluate(
+            community_cards_extended, opponent_cards
+        )
+        if player_score < opponent_score:
+            wins += 1
+        elif player_score == opponent_score:
+            wins += 1
 
-    def simulate():
-        random.shuffle(deck)
-        sample_cards = deck[:1 if len(community_cards) < 5 else 0]
-        equity = compute_equity(player_cards, community_cards + sample_cards, iterations=100)
-        return min(int(equity * bins), bins - 1)
+    if timer:
+        print("Time it takes to call function: {}s".format(time.time() - start_time))
 
-    results = Parallel(n_jobs=-1)(delayed(simulate)() for _ in range(samples)) if parallel else [simulate() for _ in range(samples)]
-    for result in results:
-        histogram[result] += 1
+    return wins / n
 
-    return [value / samples for value in histogram]
+# predicts the cluster using calculate_equity
+def predict_cluster_fast(cards, n=1000, total_clusters=10):
+    assert type(cards) == list
+    equity = calculate_equity(cards[:2], cards[2:], n=n)
+    cluster = min(total_clusters - 1, int(equity * total_clusters))
+    return cluster
 
-# Fast Cluster Prediction
-def fast_cluster_prediction(cards, clusters=10, iterations=2000):
-    """Quickly predict a cluster for a given hand."""
-    equity = compute_equity(cards[:2], cards[2:], iterations)
-    return min(clusters - 1, int(equity * clusters))
+# predicts_cluster post-flop. only use the fast method cuz it improves runtime, cuz using kmeans is too slow
+def predict_cluster(cards):
+    assert type(cards) == list
+    if len(cards) == 5:  # flop
+        return predict_cluster_fast(cards, total_clusters=NUM_FLOP_CLUSTERS)
+    elif len(cards) == 6:  # turn
+        return predict_cluster_fast(cards, total_clusters=NUM_TURN_CLUSTERS)
+    elif len(cards) == 7:  # river
+        return predict_cluster_fast(cards, total_clusters=NUM_RIVER_CLUSTERS)
+    else:
+        raise ValueError("Invalid number of cards: ", len(cards))
+
+def get_postflop_action_id(actions, player, pot):
+    action_id = ""
+    small_blind_bet = 0
+    big_blind_bet = 0
+
+    prebet = ""
+    abstracted_bet = ""
+    postbet = ""
+    small_blind_abstracted = ""
+    big_blind_abstracted = ""
+
+    start_bet = False
+    for i in range(len(actions)):
+      action = actions[i]
+      if start_bet == False and (action == "c" or action == "f" or action == "k"):
+        prebet += action
+      if start_bet == True and (action == "c" or action == "f" or action == "k"):
+        postbet += action
+      if action[0] == "b":
+        start_bet = True
+        if i % 2 == 0:
+          small_blind_bet += int(action[1:])
+        else:
+          big_blind_bet += int(action[1:])
+
+    if small_blind_bet == 0:
+      pass
+    elif small_blind_bet <= pot:
+      small_blind_abstracted = "bmin"
+    else:
+      small_blind_abstracted = "bmax"
+
+    if big_blind_bet == 0:
+      pass
+    elif big_blind_bet <= pot:
+      big_blind_abstracted = "bmin"
+    else:
+      big_blind_abstracted = "bmax"
+
+    if player == 0:
+      abstracted_bet = small_blind_abstracted + big_blind_abstracted
+    else:
+      abstracted_bet = big_blind_abstracted + small_blind_abstracted
+
+    action_id = prebet + abstracted_bet + postbet
+
+    return action_id

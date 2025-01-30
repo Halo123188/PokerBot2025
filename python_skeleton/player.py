@@ -10,6 +10,8 @@ from skeleton.runner import parse_args, run_bot
 import random
 import joblib
 import numpy as np
+from deuces import Deck, Card, Evaluator
+import time
 
 class Player(Bot):
     '''
