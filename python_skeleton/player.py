@@ -196,5 +196,72 @@ class Player(Bot):
             return FoldAction()
         return CallAction()
 
+def get_bet_amount(self, raise_type, round_state):
+    pot = 800 - self.my_stack - self.opp_stack
+    min_raise, max_raise = round_state.raise_bounds()
+    raise_amt = None
+
+    if raise_type == 'min':
+        raise_amt = random.randint(min_raise, pot)
+    elif raise_type == 'mid':
+        raise_amt = random.randint(pot, 2*pot)
+    else:
+        raise_amt = random.randint(2*pot, max_raise)
+
+    if raise_amt > max_raise:
+        return max_raise
+    else:
+        return raise_amt
+
+def get_current_stage(self):
+    if self.street == 0:
+        return 'pre-flop'
+    elif self.street == 3:
+        return 'flop'
+    elif self.street == 4:
+        return 'turn'
+    elif self.street == 5:
+        return 'river'
+    else:
+        raise Exception('Something went wrong in determining the current stage')
+
+# Returns action based on probability distribution from AI model
+def get_model_decision(self, bb: bool, history):
+    pot = 800 - self.my_stack - self.opp_stack
+    infoset = None
+    strategy_dict = None
+    current_stage = get_current_stage()
+
+    if self.street < 3:
+        infoset = self.get_preflop_infoset(history= history, player= bb)
+    else:
+        infoset = self.get_postflop_infoset(history= history, strong= , current_stage= current_stage, player= bb, pot= pot)
+
+    if bb == True:
+        strategy_dict = joblib.load('./training_data/big_blind_infoset_file.pkl')
+    else:
+        strategy_dict = joblib.load('./training_data/small_blind_infoset_file.pkl')
+
+    prob_list = strategy_dict(infoset, bb) #list of size 6
+    num = random.random()
+
+    if num >=0 and num < prob_list[0]:
+        return FoldAction()
+    elif num >= prob_list[0] and num < (prob_list[0] + prob_list[1]):
+        return CallAction()
+    elif num >= (prob_list[0] + prob_list[1]) and num < (prob_list[0] + prob_list[1] + prob_list[2]):
+        return CheckAction()
+    elif num >= (prob_list[0] + prob_list[1] + prob_list[2]) and num < (prob_list[0] + prob_list[1] + prob_list[2] + prob_list[3]):
+        return RaiseAction(get_bet_amount('min')) #bmin, min-1x pot
+    elif num >= (prob_list[0] + prob_list[1] + prob_list[2] + prob_list[3]) and num < (prob_list[0] + prob_list[1] + prob_list[2] + prob_list[3]+prob_list[4]):
+        return RaiseAction(get_bet_amount('mid')) #bmid, 1x pot-2x pot
+    elif num >= (prob_list[0] + prob_list[1] + prob_list[2] + prob_list[3]+prob_list[4]) and num < 1:
+        return RaiseAction(get_bet_amount('max')) #bmax, 2x pot- all in
+    else:
+        raise Exception("Something went wrong with the probability distribution")
+
+
+
+
 if __name__ == '__main__':
     run_bot(Player(), parse_args())
