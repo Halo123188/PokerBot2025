@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.10...3.22)
 
 # Replace "cpp-pokerbot" with your bot's name
 project(cpp-pokerbot)
